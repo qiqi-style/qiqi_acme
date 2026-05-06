@@ -7,7 +7,7 @@
 -------------------------------------
 ### 一键安装脚本
 ```bash
-wget -P /root -N https://raw.githubusercontent.com/qiqi-style/qiqi-acme/main/qiqi_acme.sh && chmod +x /root/qiqi_acme.sh && bash /root/qiqi_acme.sh
+wget -P /root -N https://raw.githubusercontent.com/qiqi-style/qiqi_acme/main/qiqi_acme.sh && chmod +x /root/qiqi_acme.sh && bash /root/qiqi_acme.sh
 ```
 ---------------------------------------
 

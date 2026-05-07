@@ -5,12 +5,12 @@ green_c='\033[38;5;118m'
 orange_c='\033[38;5;208m'
 white_c='\033[1;37m'
 plain='\033[0m'
-pink(){ echo -e "\033[38;5;211m$1\033[0m";}
-green(){ echo -e "\033[38;5;118m$1\033[0m";}
-yellow(){ echo -e "\033[38;5;208m$1\033[0m";}  # 深橙色，仅用于重要警告
-white(){ echo -e "\033[0m$1\033[0m";}
-blue(){ echo -e "\033[38;5;118m$1\033[0m";}
-red(){ echo -e "\033[38;5;211m$1\033[0m";}
+pink(){ printf "\033[38;5;211m%s\033[0m\n" "$1";}
+green(){ printf "\033[38;5;118m%s\033[0m\n" "$1";}
+yellow(){ printf "\033[38;5;208m%s\033[0m\n" "$1";}  # 深橙色，仅用于重要警告
+white(){ printf "\033[0m%s\033[0m\n" "$1";}
+blue(){ printf "\033[38;5;118m%s\033[0m\n" "$1";}
+red(){ printf "\033[38;5;211m%s\033[0m\n" "$1";}
 readp(){ IFS='' read -r -p "$(echo -e "\033[38;5;211m$1\033[0m")" $2;}
 [[ $EUID -ne 0 ]] && yellow "请以root模式运行脚本" && exit
 #[[ -e /etc/hosts ]] && grep -qE '^ *172.65.251.78 gitlab.com' /etc/hosts || echo -e '\n172.65.251.78 gitlab.com' >> /etc/hosts

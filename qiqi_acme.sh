@@ -145,19 +145,21 @@ fi
 }
 
 checktls(){
-if [[ -f /root/qiqissl/${ym}/cert.crt && -f /root/qiqissl/${ym}/private.key ]] && [[ -s /root/qiqissl/${ym}/cert.crt && -s /root/qiqissl/${ym}/private.key ]]; then
+# 泛域名路径安全处理：将 *.domain.com 转为 _wildcard_.domain.com 作为目录名（避免 * 被 glob 展开）
+ymdir=$(echo "${ym}" | sed 's/^\*\./_wildcard_./g')
+if [[ -f /root/qiqissl/${ymdir}/cert.crt && -f /root/qiqissl/${ymdir}/private.key ]] && [[ -s /root/qiqissl/${ymdir}/cert.crt && -s /root/qiqissl/${ymdir}/private.key ]]; then
 cronac
-green "域名证书申请成功或已存在！域名证书（cert.crt）和密钥（private.key）已保存到 /root/qiqissl/${ym} 文件夹内" 
+green "域名证书申请成功或已存在！域名证书（cert.crt）和密钥（private.key）已保存到 /root/qiqissl/${ymdir} 文件夹内" 
 yellow "公钥文件crt路径如下，可直接复制"
-green "/root/qiqissl/${ym}/cert.crt"
+green "/root/qiqissl/${ymdir}/cert.crt"
 yellow "密钥文件key路径如下，可直接复制"
-green "/root/qiqissl/${ym}/private.key"
-ym=`bash ~/.acme.sh/acme.sh --list | tail -1 | awk '{print $1}'`
-echo $ym > /root/qiqissl/${ym}/ca.log
+green "/root/qiqissl/${ymdir}/private.key"
+listym=$(bash ~/.acme.sh/acme.sh --list | tail -1 | awk '{print $1}')
+echo "$listym" > "/root/qiqissl/${ymdir}/ca.log"
 
 else
 bash ~/.acme.sh/acme.sh --uninstall >/dev/null 2>&1
-rm -rf /root/qiqissl/${ym}
+rm -rf "/root/qiqissl/${ymdir}"
 rm -rf ~/.acme.sh
 uncronac
 red "遗憾，域名证书申请失败，建议如下："
@@ -171,8 +173,10 @@ fi
 }
 
 installCA(){
-mkdir -p /root/qiqissl/${ym}
-bash ~/.acme.sh/acme.sh --install-cert -d ${ym} --key-file /root/qiqissl/${ym}/private.key --fullchain-file /root/qiqissl/${ym}/cert.crt --ecc
+# 泛域名路径安全处理：将 *.domain.com 转为 _wildcard_.domain.com 作为目录名（避免 * 被 glob 展开）
+ymdir=$(echo "${ym}" | sed 's/^\*\./_wildcard_./g')
+mkdir -p "/root/qiqissl/${ymdir}"
+bash ~/.acme.sh/acme.sh --install-cert -d "${ym}" --key-file "/root/qiqissl/${ymdir}/private.key" --fullchain-file "/root/qiqissl/${ymdir}/cert.crt" --ecc
 }
 
 checkip(){
@@ -256,6 +260,8 @@ checktls
 
 ACMEDNS(){
 IFS='' read -r -p "$(echo -e "\033[38;5;211m请输入解析完成的域名:\033[0m")" ym
+# 去除首尾空白，防止复制粘贴带入多余空格
+ym=$(echo "$ym" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 green "已输入的域名:$ym" && sleep 1
 checkacmeca
 freenom=`echo $ym | awk -F '.' '{print $NF}'`

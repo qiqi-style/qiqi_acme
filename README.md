@@ -8,16 +8,16 @@
 
 ### 🚀 一键安装脚本
 
-您可以选择以下任意一种命令将脚本下载并保存到 `/root` 目录下运行：
+您可以选择以下任意一种命令直接运行脚本：
 
-**使用 wget:**
+**使用 curl 一键运行:**
 ```bash
-wget -P /root -N https://raw.githubusercontent.com/qiqi-style/qiqi_acme/main/qiqi_acme.sh && chmod +x /root/qiqi_acme.sh && bash /root/qiqi_acme.sh
+bash <(curl -sL https://raw.githubusercontent.com/qiqi-style/qiqi_acme/main/qiqi_acme.sh)
 ```
 
-**使用 curl:**
+**使用 wget 一键运行:**
 ```bash
-curl -o /root/qiqi_acme.sh -L https://raw.githubusercontent.com/qiqi-style/qiqi_acme/main/qiqi_acme.sh && chmod +x /root/qiqi_acme.sh && bash /root/qiqi_acme.sh
+bash <(wget -qO- https://raw.githubusercontent.com/qiqi-style/qiqi_acme/main/qiqi_acme.sh)
 ```
 
 -------------------------------------

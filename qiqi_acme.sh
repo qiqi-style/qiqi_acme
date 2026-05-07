@@ -13,6 +13,12 @@ blue(){ printf "\033[38;5;118m%s\033[0m\n" "$1";}
 red(){ printf "\033[38;5;211m%s\033[0m\n" "$1";}
 readp(){ IFS='' read -r -p "$(echo -e "\033[38;5;211m$1\033[0m")" $2;}
 [[ $EUID -ne 0 ]] && yellow "请以root模式运行脚本" && exit
+
+# 自动安装快捷命令与持久化脚本
+if [[ ! -f /root/qiqi_acme.sh || "$0" == *"fd"* || "$0" == "/dev/fd/"* ]]; then
+    curl -sL https://raw.githubusercontent.com/qiqi-style/qiqi_acme/main/qiqi_acme.sh -o /root/qiqi_acme.sh
+    chmod +x /root/qiqi_acme.sh
+fi
 #[[ -e /etc/hosts ]] && grep -qE '^ *172.65.251.78 gitlab.com' /etc/hosts || echo -e '\n172.65.251.78 gitlab.com' >> /etc/hosts
 if [[ -f /etc/redhat-release ]]; then
 release="Centos"
@@ -44,7 +50,7 @@ v4=$(curl -s4m5 icanhazip.com -k)
 v6=$(curl -s6m5 icanhazip.com -k)
 }
 
-if [ ! -f acqiqi_update ]; then
+if [ ! -f /root/.acqiqi_update ]; then
 green "首次安装qiqi-acme脚本必要的依赖……"
 if [[ x"${release}" == x"alpine" ]]; then
 apk add wget curl tar jq tzdata openssl expect git socat iproute2 virt-what
@@ -101,7 +107,7 @@ fi
 fi
 done
 fi
-touch acqiqi_update
+touch /root/.acqiqi_update
 fi
 
 if [[ -z $(curl -s4m5 icanhazip.com -k) ]]; then
@@ -438,6 +444,7 @@ rm -rf ~/.acme.sh
 sed -i '/acme.sh.env/d' ~/.bashrc 
 source ~/.bashrc
 uncronac
+rm -f /root/qiqi_acme.sh /root/.acqiqi_update
 [[ -z $(~/.acme.sh/acme.sh -v 2>/dev/null) ]] && green "acme.sh卸载完毕" || red "acme.sh卸载失败"
 }
 

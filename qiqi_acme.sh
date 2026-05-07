@@ -145,8 +145,8 @@ fi
 }
 
 checktls(){
-# 泛域名路径安全处理：将 *.domain.com 转为 _wildcard_.domain.com 作为目录名（避免 * 被 glob 展开）
-ymdir=$(echo "${ym}" | sed 's/^\*\./_wildcard_./g')
+# 泛域名目录名直接用原始域名（*.domain.com），所有路径操作均已加双引号保护，Shell 不会 glob 展开
+ymdir="${ym}"
 if [[ -f /root/qiqissl/${ymdir}/cert.crt && -f /root/qiqissl/${ymdir}/private.key ]] && [[ -s /root/qiqissl/${ymdir}/cert.crt && -s /root/qiqissl/${ymdir}/private.key ]]; then
 cronac
 green "域名证书申请成功或已存在！域名证书（cert.crt）和密钥（private.key）已保存到 /root/qiqissl/${ymdir} 文件夹内" 
@@ -173,8 +173,8 @@ fi
 }
 
 installCA(){
-# 泛域名路径安全处理：将 *.domain.com 转为 _wildcard_.domain.com 作为目录名（避免 * 被 glob 展开）
-ymdir=$(echo "${ym}" | sed 's/^\*\./_wildcard_./g')
+# 泛域名目录名直接用原始域名（*.domain.com），所有路径操作均已加双引号保护，Shell 不会 glob 展开
+ymdir="${ym}"
 mkdir -p "/root/qiqissl/${ymdir}"
 bash ~/.acme.sh/acme.sh --install-cert -d "${ym}" --key-file "/root/qiqissl/${ymdir}/private.key" --fullchain-file "/root/qiqissl/${ymdir}/cert.crt" --ecc
 }

@@ -12,6 +12,66 @@ white(){ printf "\033[0m%s\033[0m\n" "$1";}
 blue(){ printf "\033[38;5;118m%s\033[0m\n" "$1";}
 red(){ printf "\033[38;5;211m%s\033[0m\n" "$1";}
 readp(){ IFS='' read -r -p "$(echo -e "\033[38;5;211m$1\033[0m")" $2;}
+
+normalize_domain_input(){
+local value="$1"
+value=$(printf '%s' "$value" | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+value="${value//＊/*}"
+value="${value//。/.}"
+value="${value//．/.}"
+value="${value//｡/.}"
+value="${value//�/}"
+printf '%s' "$value" | LC_ALL=C tr -cd 'A-Za-z0-9.*-'
+}
+
+validate_domain_input(){
+local domain="$1"
+local allow_wildcard="$2"
+local base label
+if [[ -z "$domain" ]]; then
+red "域名不能为空，请重新运行脚本并输入正确域名" && exit 1
+fi
+if [[ "$domain" == *"*"* && "$domain" != \*.* ]]; then
+red "泛域名格式错误，请使用类似 *.example.com 的格式" && exit 1
+fi
+if [[ "$domain" == \*.* && "$allow_wildcard" != "1" ]]; then
+red "独立80端口模式不支持泛域名证书，请选择DNS API模式申请" && exit 1
+fi
+if [[ "$domain" == \*.* ]]; then
+base="${domain#\*.}"
+else
+base="$domain"
+fi
+if [[ "$base" == *"*"* || "$base" == .* || "$base" == *. || "$base" == *..* || "$base" != *.* ]]; then
+red "域名格式错误，请输入类似 example.com 或 *.example.com 的域名" && exit 1
+fi
+IFS='.' read -r -a labels <<< "$base"
+for label in "${labels[@]}"; do
+if [[ ! "$label" =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$ ]]; then
+red "域名格式错误，请检查每一段域名是否只包含字母、数字和中划线" && exit 1
+fi
+done
+}
+
+read_domain_input(){
+local allow_wildcard="$1"
+readp "请输入解析完成的域名:" ym
+ym=$(normalize_domain_input "$ym")
+validate_domain_input "$ym" "$allow_wildcard"
+green "已输入的域名:$ym" && sleep 1
+}
+
+set_cert_domains(){
+cert_install_domain="$ym"
+cert_store_domain="$ym"
+acme_domain_args=(-d "$ym")
+if [[ "$ym" == \*.* ]]; then
+cert_install_domain="${ym#\*.}"
+cert_store_domain="$ym"
+acme_domain_args=(-d "$cert_install_domain" -d "$ym")
+green "将把 ${cert_install_domain} 和 ${ym} 放进同一张证书、同一个密钥中" && sleep 1
+fi
+}
 [[ $EUID -ne 0 ]] && yellow "请以root模式运行脚本" && exit
 
 # 自动安装快捷命令与持久化脚本
@@ -151,17 +211,18 @@ fi
 }
 
 checktls(){
-# 泛域名目录名直接用原始域名（*.domain.com），所有路径操作均已加双引号保护，Shell 不会 glob 展开
-ymdir="${ym}"
+ymdir="${cert_store_domain:-$ym}"
 if [[ -f /root/qiqissl/${ymdir}/cert.crt && -f /root/qiqissl/${ymdir}/private.key ]] && [[ -s /root/qiqissl/${ymdir}/cert.crt && -s /root/qiqissl/${ymdir}/private.key ]]; then
 cronac
 green "域名证书申请成功或已存在！域名证书（cert.crt）和密钥（private.key）已保存到 /root/qiqissl/${ymdir} 文件夹内" 
+if [[ "$ym" == \*.* && -n "$cert_install_domain" ]]; then
+green "该证书和密钥已同时包含 ${cert_install_domain} 和 ${ym}"
+fi
 yellow "公钥文件crt路径如下，可直接复制"
 green "/root/qiqissl/${ymdir}/cert.crt"
 yellow "密钥文件key路径如下，可直接复制"
 green "/root/qiqissl/${ymdir}/private.key"
-listym=$(bash ~/.acme.sh/acme.sh --list | tail -1 | awk '{print $1}')
-echo "$listym" > "/root/qiqissl/${ymdir}/ca.log"
+echo "${ym}" > "/root/qiqissl/${ymdir}/ca.log"
 
 else
 bash ~/.acme.sh/acme.sh --uninstall >/dev/null 2>&1
@@ -179,10 +240,10 @@ fi
 }
 
 installCA(){
-# 泛域名目录名直接用原始域名（*.domain.com），所有路径操作均已加双引号保护，Shell 不会 glob 展开
-ymdir="${ym}"
+local install_domain="${cert_install_domain:-$ym}"
+ymdir="${cert_store_domain:-$ym}"
 mkdir -p "/root/qiqissl/${ymdir}"
-bash ~/.acme.sh/acme.sh --install-cert -d "${ym}" --key-file "/root/qiqissl/${ymdir}/private.key" --fullchain-file "/root/qiqissl/${ymdir}/cert.crt" --ecc
+bash ~/.acme.sh/acme.sh --install-cert -d "${install_domain}" --key-file "/root/qiqissl/${ymdir}/private.key" --fullchain-file "/root/qiqissl/${ymdir}/cert.crt" --ecc
 }
 
 checkip(){
@@ -235,50 +296,63 @@ checkacmeca(){
 if [[ "${ym}" == *ip6.arpa* ]]; then
 red "目前不支持ip6.arpa域名申请证书" && exit
 fi
-nowca=`bash ~/.acme.sh/acme.sh --list | tail -1 | awk '{print $1}'`
-if [[ $nowca == $ym ]]; then
+local cert_check_domain="${cert_install_domain:-$ym}"
+local cert_list cert_line ymdir
+cert_list=$(bash ~/.acme.sh/acme.sh --list)
+cert_line=$(printf '%s\n' "$cert_list" | awk -v domain="$cert_check_domain" 'NR>1 && $1 == domain {print; exit}')
+if [[ -n "$cert_line" ]]; then
+if [[ "$ym" == \*.* && "$cert_line" == *"$ym"* ]]; then
+ymdir="${cert_store_domain:-$ym}"
+if [[ ! -s "/root/qiqissl/${ymdir}/cert.crt" || ! -s "/root/qiqissl/${ymdir}/private.key" ]]; then
+yellow "检测到已有包含 ${cert_check_domain} 和 ${ym} 的证书记录，正在保存到 /root/qiqissl/${ymdir}/"
+installCA
+checktls
+exit
+fi
+fi
 red "经检测，输入的域名已有证书申请记录，不用重复申请"
 red "证书申请记录如下："
 bash ~/.acme.sh/acme.sh --list
 yellow "如果一定要重新申请，请先执行删除证书选项" && exit
+fi
+if [[ "$ym" == \*.* ]] && printf '%s\n' "$cert_list" | awk 'NR>1 {print $1}' | grep -Fxq "$ym"; then
+yellow "检测到已有单独泛域名证书记录，将继续申请同时包含 ${cert_check_domain} 和 ${ym} 的合并证书"
 fi
 }
 
 ACMEstandaloneDNS(){
 v4v6
 #vpsip=${v4:-$v6}
-readp "请输入解析完成的域名:" ym
+read_domain_input 0
+set_cert_domains
 #if [ -z "$ym" ]; then
 #case "$vpsip" in *:*) ym="${vpsip//:/-}.nip.io" ;; *) ym="${vpsip//./-}.nip.io" ;; esac
 #fi
-green "已输入的域名:$ym" && sleep 1
 checkacmeca
 checkip
 if [[ $domainIP = $v4 ]]; then
-bash ~/.acme.sh/acme.sh --issue -d ${ym} --standalone -k ec-256 --server letsencrypt --insecure
+bash ~/.acme.sh/acme.sh --issue "${acme_domain_args[@]}" --standalone -k ec-256 --server letsencrypt --insecure
 fi
 if [[ $domainIP = $v6 ]]; then
-bash ~/.acme.sh/acme.sh --issue -d ${ym} --standalone -k ec-256 --server letsencrypt --listen-v6 --insecure
+bash ~/.acme.sh/acme.sh --issue "${acme_domain_args[@]}" --standalone -k ec-256 --server letsencrypt --listen-v6 --insecure
 fi
 installCA
 checktls
 }
 
 ACMEDNS(){
-IFS='' read -r -p "$(echo -e "\033[38;5;211m请输入解析完成的域名:\033[0m")" ym
-# 去除首尾空白，防止复制粘贴带入多余空格
-ym=$(echo "$ym" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-green "已输入的域名:$ym" && sleep 1
+read_domain_input 1
+set_cert_domains
 checkacmeca
-freenom=`echo $ym | awk -F '.' '{print $NF}'`
+freenom=`printf '%s' "$ym" | awk -F '.' '{print $NF}'`
 if [[ $freenom =~ tk|ga|gq|ml|cf ]]; then
 red "经检测，你正在使用freenom免费域名解析，不支持当前DNS API模式，脚本退出" && exit 
 fi
-if echo "$ym" | grep -qF '*'; then
+if [[ "$ym" == \*.* ]]; then
 green "经检测，当前为泛域名证书申请，" && sleep 2
 # 泛域名无法直接dig，用根域名做IP检测
 ymback="$ym"
-ym=$(echo "$ym" | sed 's/^\*\.//')
+ym="${ym#\*.}"
 checkip
 ym="$ymback"
 else
@@ -295,10 +369,10 @@ export CF_Key="$GAK"
 readp "请输入登录Cloudflare的注册邮箱地址：" CFemail
 export CF_Email="$CFemail"
 if [[ $domainIP = $v4 ]]; then
-bash ~/.acme.sh/acme.sh --issue --dns dns_cf -d ${ym} -k ec-256 --server letsencrypt --insecure
+bash ~/.acme.sh/acme.sh --issue --dns dns_cf "${acme_domain_args[@]}" -k ec-256 --server letsencrypt --insecure
 fi
 if [[ $domainIP = $v6 ]]; then
-bash ~/.acme.sh/acme.sh --issue --dns dns_cf -d ${ym} -k ec-256 --server letsencrypt --listen-v6 --insecure
+bash ~/.acme.sh/acme.sh --issue --dns dns_cf "${acme_domain_args[@]}" -k ec-256 --server letsencrypt --listen-v6 --insecure
 fi
 ;;
 2 )
@@ -307,10 +381,10 @@ export DP_Id="$DPID"
 readp "请复制腾讯云DNSPod的DP_Key：" DPKEY
 export DP_Key="$DPKEY"
 if [[ $domainIP = $v4 ]]; then
-bash ~/.acme.sh/acme.sh --issue --dns dns_dp -d ${ym} -k ec-256 --server letsencrypt --insecure
+bash ~/.acme.sh/acme.sh --issue --dns dns_dp "${acme_domain_args[@]}" -k ec-256 --server letsencrypt --insecure
 fi
 if [[ $domainIP = $v6 ]]; then
-bash ~/.acme.sh/acme.sh --issue --dns dns_dp -d ${ym} -k ec-256 --server letsencrypt --listen-v6 --insecure
+bash ~/.acme.sh/acme.sh --issue --dns dns_dp "${acme_domain_args[@]}" -k ec-256 --server letsencrypt --listen-v6 --insecure
 fi
 ;;
 3 )
@@ -319,10 +393,10 @@ export Ali_Key="$ALKEY"
 readp "请复制阿里云Aliyun的Ali_Secret：" ALSER
 export Ali_Secret="$ALSER"
 if [[ $domainIP = $v4 ]]; then
-bash ~/.acme.sh/acme.sh --issue --dns dns_ali -d ${ym} -k ec-256 --server letsencrypt --insecure
+bash ~/.acme.sh/acme.sh --issue --dns dns_ali "${acme_domain_args[@]}" -k ec-256 --server letsencrypt --insecure
 fi
 if [[ $domainIP = $v6 ]]; then
-bash ~/.acme.sh/acme.sh --issue --dns dns_ali -d ${ym} -k ec-256 --server letsencrypt --listen-v6 --insecure
+bash ~/.acme.sh/acme.sh --issue --dns dns_ali "${acme_domain_args[@]}" -k ec-256 --server letsencrypt --listen-v6 --insecure
 fi
 esac
 installCA
@@ -390,6 +464,8 @@ if [[ -n $(~/.acme.sh/acme.sh -v 2>/dev/null) ]]; then
 caacme1=`bash ~/.acme.sh/acme.sh --list | tail -1 | awk '{print $1}'`
 if [[ -n $caacme1 && ! $caacme1 == "Main_Domain" ]] && [[ -f /root/qiqissl/${caacme1}/cert.crt && -f /root/qiqissl/${caacme1}/private.key && -s /root/qiqissl/${caacme1}/cert.crt && -s /root/qiqissl/${caacme1}/private.key ]]; then
 caacme=$caacme1
+elif [[ -n $caacme1 && ! $caacme1 == "Main_Domain" ]] && [[ -f "/root/qiqissl/*.${caacme1}/cert.crt" && -f "/root/qiqissl/*.${caacme1}/private.key" && -s "/root/qiqissl/*.${caacme1}/cert.crt" && -s "/root/qiqissl/*.${caacme1}/private.key" ]]; then
+caacme="*.${caacme1}"
 else
 caacme='无证书申请记录'
 fi
@@ -466,7 +542,7 @@ echo
 echo -e "  \033[38;5;118m⬥ qiqi Github   \033[38;5;118m:  https://github.com/qiqi-style\033[0m"
 echo -e "  \033[38;5;118m⬥ qiqi 博客     \033[0m:  （暂空）"
 echo -e "  \033[38;5;118m⬥ qiqi YouTube  \033[0m:  （暂空）"
-echo -e "  \033[38;5;211m⬥ qiqi_acme版本 \033[38;5;118m:  v1.0\033[0m"
+echo -e "  \033[38;5;211m⬥ qiqi_acme版本 \033[38;5;118m:  v2.0\033[0m"
 echo -e "\033[38;5;211m  ─────────────────────────── ⚠ 使用须知 ─────────────────────────────  \033[0m"
 echo -e "  \033[38;5;245m1.\033[0m 本脚本仅支持单IP的VPS，SSH登录IP须与VPS公网IP一致"
 echo -e "  \033[38;5;245m2.\033[0m 80端口模式：仅支持单域名证书，80端口空闲时可自动续期"

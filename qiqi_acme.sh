@@ -143,6 +143,7 @@ set_cert_domains(){
 cert_install_domain="$ym"
 cert_store_domain="$ym"
 acme_domain_args=(-d "$ym")
+acme_issue_force_args=()
 if [[ "$ym" == \*.* ]]; then
 cert_install_domain="${ym#\*.}"
 cert_store_domain="$ym"
@@ -448,27 +449,27 @@ red "目前不支持ip6.arpa域名申请证书"
 return 1
 fi
 local cert_check_domain="${cert_install_domain:-$ym}"
-local cert_list cert_line ymdir
-cert_list=$(bash ~/.acme.sh/acme.sh --list)
+local cert_list cert_line wildcard_line
+cert_list=$(bash ~/.acme.sh/acme.sh --list 2>/dev/null)
 cert_line=$(printf '%s\n' "$cert_list" | awk -v domain="$cert_check_domain" 'NR>1 && $1 == domain {print; exit}')
 if [[ -n "$cert_line" ]]; then
+acme_issue_force_args=(--force)
+yellow "检测到 ${cert_check_domain} 已有证书申请记录，将执行覆盖申请"
 if [[ "$ym" == \*.* && "$cert_line" == *"$ym"* ]]; then
-ymdir="${cert_store_domain:-$ym}"
-if [[ ! -s "/root/qiqissl/${ymdir}/cert.crt" || ! -s "/root/qiqissl/${ymdir}/private.key" ]]; then
-yellow "检测到已有包含 ${cert_check_domain} 和 ${ym} 的证书记录，正在保存到 /root/qiqissl/${ymdir}/"
-installCA || return 1
-checktls || return 1
-return 1
+yellow "已有记录已包含 ${cert_check_domain} 和 ${ym}，本次会重新签发并覆盖安装证书文件"
+else
+yellow "本次会重新签发 ${ym}，并覆盖安装到 /root/qiqissl/${cert_store_domain:-$ym}/"
 fi
+yellow "如果触发 Let's Encrypt 频率限制，请等待提示时间后再重新申请"
+return 0
 fi
-red "经检测，输入的域名已有证书申请记录，不用重复申请"
-red "证书申请记录如下："
-bash ~/.acme.sh/acme.sh --list
-yellow "如果一定要重新申请，请先手动确认旧证书记录；脚本不会自动删除已有证书文件"
-return 1
+if [[ "$ym" == \*.* ]]; then
+wildcard_line=$(printf '%s\n' "$cert_list" | awk -v domain="$ym" 'NR>1 && $1 == domain {print; exit}')
+if [[ -n "$wildcard_line" ]]; then
+acme_issue_force_args=(--force)
+yellow "检测到已有单独泛域名证书记录，将覆盖申请为同时包含 ${cert_check_domain} 和 ${ym} 的合并证书"
+yellow "如果触发 Let's Encrypt 频率限制，请等待提示时间后再重新申请"
 fi
-if [[ "$ym" == \*.* ]] && printf '%s\n' "$cert_list" | awk 'NR>1 {print $1}' | grep -Fxq "$ym"; then
-yellow "检测到已有单独泛域名证书记录，将继续申请同时包含 ${cert_check_domain} 和 ${ym} 的合并证书"
 fi
 }
 
@@ -483,10 +484,10 @@ set_cert_domains
 checkacmeca || return
 checkip || return
 if [[ $domainIP = $v4 ]]; then
-issue_cert bash ~/.acme.sh/acme.sh --issue "${acme_domain_args[@]}" --standalone -k ec-256 --server letsencrypt --insecure || return
+issue_cert bash ~/.acme.sh/acme.sh --issue "${acme_issue_force_args[@]}" "${acme_domain_args[@]}" --standalone -k ec-256 --server letsencrypt --insecure || return
 fi
 if [[ $domainIP = $v6 ]]; then
-issue_cert bash ~/.acme.sh/acme.sh --issue "${acme_domain_args[@]}" --standalone -k ec-256 --server letsencrypt --listen-v6 --insecure || return
+issue_cert bash ~/.acme.sh/acme.sh --issue "${acme_issue_force_args[@]}" "${acme_domain_args[@]}" --standalone -k ec-256 --server letsencrypt --listen-v6 --insecure || return
 fi
 installCA || return
 checktls
@@ -524,21 +525,21 @@ readp "请复制Cloudflare的Global API Key：" GAK
 export CF_Key="$GAK"
 readp "请输入登录Cloudflare的注册邮箱地址：" CFemail
 export CF_Email="$CFemail"
-issue_cert bash ~/.acme.sh/acme.sh --issue --dns dns_cf "${acme_domain_args[@]}" -k ec-256 --server letsencrypt --insecure || return
+issue_cert bash ~/.acme.sh/acme.sh --issue "${acme_issue_force_args[@]}" --dns dns_cf "${acme_domain_args[@]}" -k ec-256 --server letsencrypt --insecure || return
 ;;
 2 )
 readp "请复制腾讯云DNSPod的DP_Id：" DPID
 export DP_Id="$DPID"
 readp "请复制腾讯云DNSPod的DP_Key：" DPKEY
 export DP_Key="$DPKEY"
-issue_cert bash ~/.acme.sh/acme.sh --issue --dns dns_dp "${acme_domain_args[@]}" -k ec-256 --server letsencrypt --insecure || return
+issue_cert bash ~/.acme.sh/acme.sh --issue "${acme_issue_force_args[@]}" --dns dns_dp "${acme_domain_args[@]}" -k ec-256 --server letsencrypt --insecure || return
 ;;
 3 )
 readp "请复制阿里云Aliyun的Ali_Key：" ALKEY
 export Ali_Key="$ALKEY"
 readp "请复制阿里云Aliyun的Ali_Secret：" ALSER
 export Ali_Secret="$ALSER"
-issue_cert bash ~/.acme.sh/acme.sh --issue --dns dns_ali "${acme_domain_args[@]}" -k ec-256 --server letsencrypt --insecure || return
+issue_cert bash ~/.acme.sh/acme.sh --issue "${acme_issue_force_args[@]}" --dns dns_ali "${acme_domain_args[@]}" -k ec-256 --server letsencrypt --insecure || return
 ;;
 * )
 yellow "输入有误，已返回主菜单"
@@ -582,7 +583,7 @@ fi
 }
 
 acme(){
-ab="1.选择独立80端口模式申请证书（仅需域名，小白推荐），安装过程中将强制释放80端口\n2.选择DNS API模式申请证书（需域名、ID、Key），自动识别单域名与泛域名\n 请选择："
+ab="1.选择独立80端口模式申请证书（仅需域名），安装过程中将强制释放80端口\n2.选择DNS API模式申请证书（推荐、需域名、ID、Key），自动识别单域名与泛域名\n 请选择："
 readp "$ab" cd
 case "$cd" in 
 1 ) acme2 && acme3 && ACMEstandaloneDNScheck;;
@@ -749,6 +750,8 @@ printf "%s" "$raw_expire"
 list_cert_options(){
 local mode="${1:-plain}"
 cert_domains=()
+cert_store_names=()
+cert_key_lengths=()
 local idx=0 domain key_length san ca created renew rest created_local expire_raw expire_epoch expire_local remain_days row_id width
 local -a row_ids row_domains row_sans row_created row_expire row_remain
 cert_col_no=$(display_width "序号")
@@ -763,8 +766,10 @@ continue
 fi
 idx=$((idx + 1))
 cert_domains[$idx]="$domain"
+cert_key_lengths[$idx]="$key_length"
 [[ -z "$san" ]] && san="-"
 [[ -z "$created" ]] && created="-"
+cert_store_names[$idx]="$(cert_store_name_for_record "$domain" "$san")"
 created_local=$(format_cert_time "$created")
 expire_raw=$(cert_expire_raw_for_record "$domain" "$san")
 expire_epoch=$(cert_time_epoch "$expire_raw")
@@ -829,6 +834,91 @@ else
 yellow "全部续期失败或部分证书续期失败，已保留acme.sh和所有证书文件"
 return 1
 fi
+}
+
+safe_cert_name(){
+local value="$1"
+[[ -n "$value" ]] || return 1
+[[ "$value" != /* ]] || return 1
+[[ "$value" != *"/"* ]] || return 1
+[[ "$value" != "." && "$value" != ".." ]] || return 1
+return 0
+}
+
+delete_one_cert(){
+local domain="$1"
+local store_name="$2"
+local key_length="$3"
+local confirm target_dir acme_dir
+local -a remove_args
+if [[ -z "$domain" ]]; then
+yellow "未找到对应证书，请重新选择"
+return 1
+fi
+[[ -n "$store_name" ]] || store_name="$domain"
+if ! safe_cert_name "$domain" || ! safe_cert_name "$store_name"; then
+red "证书名称异常，已停止删除，避免误删文件"
+return 1
+fi
+target_dir="/root/qiqissl/${store_name}"
+case "$key_length" in
+ec-*|EC-*|ecc|ECC)
+remove_args=(--ecc)
+acme_dir="$HOME/.acme.sh/${domain}_ecc"
+;;
+*)
+remove_args=()
+acme_dir="$HOME/.acme.sh/${domain}"
+;;
+esac
+yellow "将删除 acme.sh 记录：${domain}"
+yellow "将删除证书文件目录：${target_dir}"
+readp "确认删除请输入 DELETE，其他输入取消 → " confirm
+if [[ "$confirm" != "DELETE" ]]; then
+yellow "已取消删除"
+return 1
+fi
+if bash ~/.acme.sh/acme.sh --remove -d "$domain" "${remove_args[@]}"; then
+green "acme.sh 证书记录已删除：${domain}"
+else
+yellow "acme.sh 删除记录命令返回失败，将继续尝试清理本地证书文件"
+fi
+rm -rf "$acme_dir" "$target_dir"
+green "证书文件已删除：${target_dir}"
+}
+
+acmedelete(){
+ensure_acme_ready || { pause_return; return; }
+local cert_index store_name
+while true; do
+clear
+qiqi_section "删除证书"
+yellow "  删除后会移除 acme.sh 记录和 /root/qiqissl/ 下对应证书文件"
+if ! list_cert_options select; then
+pause_return
+return
+fi
+echo
+printf "  ${QIQI_GRAY}[ 0 ]${QIQI_PLAIN}  返回上一级\n"
+echo
+readp "  请输入要删除的证书编号 → " cd
+case "$cd" in
+0 ) return;;
+'' ) yellow "输入不能为空，请重新选择"; sleep 1;;
+*[!0-9]* ) yellow "请输入数字编号"; sleep 1;;
+* )
+cert_index=$((10#$cd))
+if [[ -n "${cert_domains[$cert_index]}" ]]; then
+store_name="${cert_store_names[$cert_index]:-${cert_domains[$cert_index]}}"
+delete_one_cert "${cert_domains[$cert_index]}" "$store_name" "${cert_key_lengths[$cert_index]}"
+pause_return
+else
+yellow "未找到编号 ${cd} 对应的证书，请重新选择"
+sleep 1
+fi
+;;
+esac
+done
 }
 
 show_cert_status(){
@@ -916,6 +1006,7 @@ qiqi_section "功能菜单"
 qiqi_menu_item "1" "申请 letsencrypt ECC 证书" "（80端口 / DNS API 双模式）"
 qiqi_menu_item "2" "手动续期证书"
 printf "  ${QIQI_ORANGE}[ 3 ]${QIQI_PLAIN}  ${QIQI_WHITE}卸载 acme.sh（保留管理脚本和证书文件）${QIQI_PLAIN}\n"
+printf "  ${QIQI_RED}[ 4 ]${QIQI_PLAIN}  ${QIQI_WHITE}删除证书（删除记录和证书文件）${QIQI_PLAIN}\n"
 printf "  ${QIQI_GRAY}[ 0 ]${QIQI_PLAIN}  ${QIQI_WHITE}退出${QIQI_PLAIN}\n"
 echo
 readp "  请输入选项数字 → " NumberInput
@@ -923,6 +1014,7 @@ case "$NumberInput" in
 1 ) acme; pause_return;;
 2 ) acmerenew;;
 3 ) uninstall; pause_return;;
+4 ) acmedelete;;
 0 ) exit;;
 * ) yellow "输入有误，请重新选择"; sleep 1;;
 esac

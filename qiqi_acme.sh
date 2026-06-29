@@ -1,17 +1,90 @@
 #!/bin/bash 
 export LANG=en_US.UTF-8
+
+QIQI_PROJECT_NAME="${QIQI_PROJECT_NAME:-qiqi_acme}"
+QIQI_PROJECT_VERSION="${QIQI_PROJECT_VERSION:-v3.0}"
+QIQI_PROJECT_DESCRIPTION="${QIQI_PROJECT_DESCRIPTION:-中文 SSL 证书申请与续期管理脚本}"
+QIQI_PROJECT_URL="${QIQI_PROJECT_URL:-https://github.com/qiqi-style/qiqi_acme}"
+QIQI_THEME_LOCAL="${QIQI_THEME_LOCAL:-/root/qiqi_acme_theme.sh}"
+QIQI_THEME_URL="${QIQI_THEME_URL:-https://raw.githubusercontent.com/qiqi-style/qiqi_acme/main/theme.sh}"
+
+load_qiqi_theme(){
+local script_dir theme_file
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+for theme_file in "${script_dir}/theme.sh" "${QIQI_THEME_LOCAL}"; do
+if [[ -f "$theme_file" ]]; then
+# shellcheck source=/dev/null
+. "$theme_file"
+return 0
+fi
+done
+if [[ $EUID -eq 0 ]] && command -v curl >/dev/null 2>&1; then
+if curl -fsSL --max-time 8 "$QIQI_THEME_URL" -o "$QIQI_THEME_LOCAL" 2>/dev/null && [[ -s "$QIQI_THEME_LOCAL" ]]; then
+# shellcheck source=/dev/null
+. "$QIQI_THEME_LOCAL"
+return 0
+fi
+fi
+return 1
+}
+
+load_qiqi_theme || true
+
+if [[ -z "${QIQI_THEME_LOADED:-}" ]]; then
 pink_c='\033[38;5;211m'
 green_c='\033[38;5;118m'
 orange_c='\033[38;5;208m'
 white_c='\033[1;37m'
 plain='\033[0m'
+QIQI_PINK="$pink_c"
+QIQI_GREEN="$green_c"
+QIQI_ORANGE="$orange_c"
+QIQI_GRAY='\033[38;5;245m'
+QIQI_CYAN='\033[38;5;81m'
+QIQI_WHITE="$white_c"
+QIQI_PLAIN="$plain"
 pink(){ printf "\033[38;5;211m%s\033[0m\n" "$1";}
 green(){ printf "\033[38;5;118m%s\033[0m\n" "$1";}
 yellow(){ printf "\033[38;5;208m%s\033[0m\n" "$1";}  # 深橙色，仅用于重要警告
 white(){ printf "\033[0m%s\033[0m\n" "$1";}
 blue(){ printf "\033[38;5;118m%s\033[0m\n" "$1";}
 red(){ printf "\033[38;5;211m%s\033[0m\n" "$1";}
-readp(){ IFS='' read -r -p "$(echo -e "\033[38;5;211m$1\033[0m")" $2;}
+muted(){ printf "\033[38;5;245m%s\033[0m\n" "$1";}
+readp(){ IFS='' read -r -p "$(printf "\033[38;5;211m%b\033[0m" "$1")" "$2";}
+qiqi_line(){ printf "\033[38;5;211m%s\033[0m\n" "────────────────────────────────────────────────────────────────────────";}
+qiqi_section(){ printf "\n\033[38;5;211m  ───────────────────── %s ─────────────────────\033[0m\n" "$1";}
+qiqi_menu_item(){
+local num="$1" label="$2" desc="${3:-}"
+if [[ -n "$desc" ]]; then
+printf "  \033[38;5;118m[ %s ]\033[0m  %s %s\n" "$num" "$label" "$desc"
+else
+printf "  \033[38;5;118m[ %s ]\033[0m  %s\n" "$num" "$label"
+fi
+}
+qiqi_banner(){
+local project_name="${1:-qiqi_acme}" version="${2:-v3.0}" description="${3:-中文 SSL 证书申请与续期管理脚本}" project_url="${4:-https://github.com/qiqi-style/qiqi_acme}"
+echo
+printf "\033[38;5;211m  %s\033[0m\n" "░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░"
+echo
+printf "  \033[38;5;211m ██████╗  \033[38;5;212m██╗\033[38;5;213m ██████╗  \033[38;5;214m██╗         \033[38;5;118m███████╗\033[38;5;119m████████╗\033[38;5;120m██╗   ██╗\033[38;5;121m██╗     ███████╗\033[0m\n"
+printf "  \033[38;5;211m██╔═══██╗ \033[38;5;212m██║\033[38;5;213m██╔═══██╗ \033[38;5;214m██║         \033[38;5;118m██╔════╝\033[38;5;119m╚══██╔══╝\033[38;5;120m╚██╗ ██╔╝\033[38;5;121m██║     ██╔════╝\033[0m\n"
+printf "  \033[38;5;212m██║   ██║ \033[38;5;213m██║\033[38;5;214m██║   ██║ \033[38;5;215m██║  ▄▄▄▄▄  \033[38;5;118m██║        \033[38;5;119m██║    \033[38;5;120m╚████╔╝ \033[38;5;121m██║     █████╗\033[0m\n"
+printf "  \033[38;5;213m██║   ██║ \033[38;5;214m██║\033[38;5;215m██║   ██║ \033[38;5;216m██║  ▀▀▀▀▀  \033[38;5;118m███████╗   \033[38;5;119m██║     \033[38;5;120m╚██╔╝  \033[38;5;121m██║     ██╔══╝\033[0m\n"
+printf "  \033[38;5;213m██║▄▄ ██║ \033[38;5;214m██║\033[38;5;215m██║▄▄ ██║ \033[38;5;216m██║         \033[38;5;119m╚════██║   ██║      ██║   \033[38;5;157m██║     ██║\033[0m\n"
+printf "  \033[38;5;214m╚██████╔╝ \033[38;5;215m██║\033[38;5;216m╚██████╔╝ \033[38;5;217m██║         \033[38;5;119m███████║   ██║      ██║   \033[38;5;157m███████╗███████╗\033[0m\n"
+printf "  \033[38;5;215m ╚══▀▀═╝  ╚═╝ ╚══▀▀═╝  ╚═╝         \033[38;5;120m╚══════╝   ╚═╝      ╚═╝   \033[38;5;157m╚══════╝╚══════╝\033[0m\n"
+echo
+printf "\033[38;5;118m  %s\033[0m\n" "░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░"
+echo
+printf "  \033[38;5;118m⬥ qiqi Github   :\033[0m  https://github.com/qiqi-style\n"
+printf "  \033[38;5;118m⬥ qiqi YouTube  :\033[0m  https://www.youtube.com/@qiqi-style\n"
+printf "  \033[38;5;118m⬥ qiqi 博客     :\033[0m  https://qiaiai.xyz\n"
+printf "\033[38;5;211m  ─────────────────────────── 项目简介 ─────────────────────────────  \033[0m\n"
+printf "  \033[38;5;245m⬥\033[0m 项目地址：\033[38;5;81m%s\033[0m\n" "$project_url"
+printf "  \033[38;5;245m⬥\033[0m 当前版本：\033[38;5;81m%s (%s)\033[0m\n" "$version" "$project_name"
+printf "  \033[38;5;245m⬥\033[0m %s\n" "$description"
+}
+fi
 
 normalize_domain_input(){
 local value="$1"
@@ -83,6 +156,9 @@ fi
 if [[ ! -f /root/qiqi_acme.sh || "$0" == *"fd"* || "$0" == "/dev/fd/"* ]]; then
     curl -sL https://raw.githubusercontent.com/qiqi-style/qiqi_acme/main/qiqi_acme.sh -o /root/qiqi_acme.sh
     chmod +x /root/qiqi_acme.sh
+fi
+if [[ ! -s "$QIQI_THEME_LOCAL" ]]; then
+    curl -fsSL --max-time 8 "$QIQI_THEME_URL" -o "$QIQI_THEME_LOCAL" 2>/dev/null || true
 fi
 #[[ -e /etc/hosts ]] && grep -qE '^ *172.65.251.78 gitlab.com' /etc/hosts || echo -e '\n172.65.251.78 gitlab.com' >> /etc/hosts
 if [[ -f /etc/redhat-release ]]; then
@@ -780,14 +856,16 @@ ensure_acme_ready || { pause_return; return; }
 local cert_index
 while true; do
 clear
-green "已申请证书状态如下："
+qiqi_section "证书续期"
+green "  已申请证书状态如下："
 if ! list_cert_options select; then
 pause_return
 return
 fi
 echo
-echo -e "  \033[38;5;208m[ 99 ]\033[0m 一键全部续期/升级"
-echo -e "  \033[38;5;245m[ 0 ]\033[0m  返回上一级"
+qiqi_section "续期操作"
+printf "  ${QIQI_ORANGE}[ 99 ]${QIQI_PLAIN} 一键全部续期/升级\n"
+printf "  ${QIQI_GRAY}[ 0 ]${QIQI_PLAIN}  返回上一级\n"
 echo
 readp "  请输入要续期的证书编号 → " cd
 case "$cd" in
@@ -824,40 +902,21 @@ rm -f /root/.acqiqi_update
 start_menu(){
 while true; do
 clear
-echo
-# ── QIQI-STYLE Banner  粉色→绿色 渐变 ──
-echo -e "\033[38;5;211m  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░\033[0m"
-echo
-echo -e "  \033[38;5;211m ██████╗  \033[38;5;212m██╗\033[38;5;213m ██████╗  \033[38;5;214m██╗\033[38;5;215m         \033[38;5;118m███████╗\033[38;5;119m████████╗\033[38;5;120m██╗   ██╗\033[38;5;121m██╗     \033[38;5;157m███████╗\033[0m"
-echo -e "  \033[38;5;211m██╔═══██╗ \033[38;5;212m██║\033[38;5;213m██╔═══██╗ \033[38;5;214m██║\033[38;5;215m         \033[38;5;118m██╔════╝\033[38;5;119m╚══██╔══╝\033[38;5;120m╚██╗ ██╔╝\033[38;5;121m██║     \033[38;5;157m██╔════╝\033[0m"
-echo -e "  \033[38;5;212m██║   ██║ \033[38;5;213m██║\033[38;5;214m██║   ██║ \033[38;5;215m██║\033[38;5;216m  ▄▄▄▄▄  \033[38;5;118m██║     \033[38;5;119m   ██║   \033[38;5;120m ╚████╔╝ \033[38;5;121m██║     \033[38;5;157m█████╗\033[0m"
-echo -e "  \033[38;5;213m██║   ██║ \033[38;5;214m██║\033[38;5;215m██║   ██║ \033[38;5;216m██║\033[38;5;217m  ▀▀▀▀▀  \033[38;5;118m███████╗\033[38;5;119m   ██║   \033[38;5;120m  ╚██╔╝  \033[38;5;121m██║     \033[38;5;157m██╔══╝\033[0m"
-echo -e "  \033[38;5;213m██║▄▄ ██║ \033[38;5;214m██║\033[38;5;215m██║▄▄ ██║ \033[38;5;216m██║\033[38;5;217m         \033[38;5;119m╚════██║\033[38;5;120m   ██║   \033[38;5;121m   ██║   \033[38;5;157m██║     \033[38;5;157m██║\033[0m"
-echo -e "  \033[38;5;214m╚██████╔╝ \033[38;5;215m██║\033[38;5;216m╚██████╔╝ \033[38;5;217m██║\033[38;5;218m         \033[38;5;119m███████║\033[38;5;120m   ██║   \033[38;5;121m   ██║   \033[38;5;157m███████╗\033[38;5;194m███████╗\033[0m"
-echo -e "  \033[38;5;215m ╚══▀▀═╝  \033[38;5;216m╚═╝\033[38;5;217m ╚══▀▀═╝  \033[38;5;218m╚═╝\033[0m         \033[38;5;120m╚══════╝\033[38;5;121m   ╚═╝   \033[38;5;157m   ╚═╝   \033[38;5;157m╚══════╝\033[38;5;194m╚══════╝\033[0m"
-echo
-echo -e "\033[38;5;118m  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░\033[0m"
-echo
-echo -e "  \033[38;5;118m⬥ qiqi Github   \033[38;5;118m:  https://github.com/qiqi-style\033[0m"
-echo -e "  \033[38;5;118m⬥ qiqi 博客     \033[0m:  （暂空）"
-echo -e "  \033[38;5;118m⬥ qiqi YouTube  \033[0m:  （暂空）"
-echo -e "  \033[38;5;211m⬥ qiqi_acme版本 \033[38;5;118m:  v3.0\033[0m"
-echo -e "\033[38;5;211m  ─────────────────────────── ⚠ 使用须知 ─────────────────────────────  \033[0m"
-echo -e "  \033[38;5;245m1.\033[0m 本脚本仅支持单IP的VPS，SSH登录IP须与VPS公网IP一致"
-echo -e "  \033[38;5;245m2.\033[0m 80端口模式：仅支持单域名证书，80端口空闲时可自动续期"
-echo -e "  \033[38;5;245m3.\033[0m DNS API模式：支持单域名与泛域名，无条件自动续期"
+qiqi_banner "$QIQI_PROJECT_NAME" "$QIQI_PROJECT_VERSION" "$QIQI_PROJECT_DESCRIPTION" "$QIQI_PROJECT_URL"
+qiqi_section "使用须知"
+printf "  ${QIQI_GRAY}1.${QIQI_PLAIN} 本脚本仅支持单IP的VPS，SSH登录IP须与VPS公网IP一致\n"
+printf "  ${QIQI_GRAY}2.${QIQI_PLAIN} 80端口模式：仅支持单域名证书，80端口空闲时可自动续期\n"
+printf "  ${QIQI_GRAY}3.${QIQI_PLAIN} DNS API模式：支持单域名与泛域名，无条件自动续期\n"
 yellow "  ⚠ 泛域名申请前，需在域名解析处添加一条 * 的记录 (格式：*.yourdomain.com)"
-echo -e "  \033[38;5;118m⬥ 公钥路径 \033[38;5;211m→\033[0m  /root/qiqissl/<域名>/cert.crt"
-echo -e "  \033[38;5;118m⬥ 密钥路径 \033[38;5;211m→\033[0m  /root/qiqissl/<域名>/private.key"
-echo
-echo -e "\033[38;5;211m  ───────────────────── 当前证书状态 ──────────────────────────────────  \033[0m"
+printf "  ${QIQI_GREEN}⬥ 公钥路径 ${QIQI_PINK}→${QIQI_PLAIN}  /root/qiqissl/<域名>/cert.crt\n"
+printf "  ${QIQI_GREEN}⬥ 密钥路径 ${QIQI_PINK}→${QIQI_PLAIN}  /root/qiqissl/<域名>/private.key\n"
+qiqi_section "当前证书状态"
 show_cert_status
-echo
-echo -e "\033[38;5;211m  ──────────────────────── 功能菜单 ───────────────────────────────────  \033[0m"
-echo -e "  \033[38;5;118m[ 1 ]\033[0m  申请 letsencrypt ECC 证书（80端口 / DNS API 双模式）"
-echo -e "  \033[38;5;118m[ 2 ]\033[0m  手动续期证书"
-echo -e "  \033[38;5;208m[ 3 ]\033[0m  卸载 acme.sh（保留管理脚本和证书文件）"
-echo -e "  \033[38;5;245m[ 0 ]\033[0m  退出"
+qiqi_section "功能菜单"
+qiqi_menu_item "1" "申请 letsencrypt ECC 证书" "（80端口 / DNS API 双模式）"
+qiqi_menu_item "2" "手动续期证书"
+printf "  ${QIQI_ORANGE}[ 3 ]${QIQI_PLAIN}  ${QIQI_WHITE}卸载 acme.sh（保留管理脚本和证书文件）${QIQI_PLAIN}\n"
+printf "  ${QIQI_GRAY}[ 0 ]${QIQI_PLAIN}  ${QIQI_WHITE}退出${QIQI_PLAIN}\n"
 echo
 readp "  请输入选项数字 → " NumberInput
 case "$NumberInput" in

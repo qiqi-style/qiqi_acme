@@ -873,8 +873,8 @@ acme_dir="$HOME/.acme.sh/${domain}"
 esac
 yellow "将删除 acme.sh 记录：${domain}"
 yellow "将删除证书文件目录：${target_dir}"
-readp "确认删除请输入 DELETE，其他输入取消 → " confirm
-if [[ "$confirm" != "DELETE" ]]; then
+readp "确认删除请输入 y，其他输入取消 → " confirm
+if [[ "${confirm,,}" != "y" ]]; then
 yellow "已取消删除"
 return 1
 fi
